@@ -9,6 +9,7 @@ var dummy = { dummy: "dummy" }
 
 function testPromiseResolution(xFactory, test) {
   var promise = resolved(dummy).then(function onBasePromiseFulfilled() {
+      console.log('call factory')
       return xFactory();
   });
 
@@ -24,6 +25,7 @@ function testPromiseResolution(xFactory, test) {
 var numberOfTimesThenWasRetrieved = 0;
 
 function xFactory() {
+  console.log('factory called')
     return Object.create(null, {
         then: {
             get: function () {

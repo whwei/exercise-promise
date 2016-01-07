@@ -85,16 +85,24 @@ Promise.prototype._handle = function() {
         if (onReject) ret = onReject(this.reason)
         else 					ret = promise.reject(this.reason)
       }
-console.dir(ret)
-      if (isPromise(ret)) {
+      
+      if (ret instanceof Promise) {
         if (ret === promise) {
           promise.reject(new TypeError()) 
         } else {
-          ret.then(promise.resolve.bind(promise), promise.reject.bind(promise))
+          ret.then(promise.resolve.bind(promise), promise.reject.bind(promise)) 
         }
       } else if (typeof ret === 'object' || typeof ret === 'function') {
-        console.log(ret)
-        promise.resolve(ret)
+        try {
+          var then = ret.then
+          
+          if (then)
+            then.call(ret, promise.resolve.bind(promise), promise.reject.bind(promise))
+          else 
+            promise.resolve(ret)       
+        } catch(e) {
+          promise.reject(e)
+        }
       } else {
         promise.resolve(ret)
       }
@@ -107,7 +115,5 @@ console.dir(ret)
 
   this._queue = []
 }
-
-function isPromise(p) { return p && typeof p.then === 'function' }
 
 module.exports = Promise
