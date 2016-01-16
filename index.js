@@ -1,119 +1,129 @@
-var Promise = function() {
-  this.status = 'pending'
-
-  this._queue = []
-}
-
-Promise.defer = function() {
-  var promise = new Promise()
-  return {
-    promise: promise,
-    resolve: promise.resolve.bind(promise),
-    reject: promise.reject.bind(promise)
-  }
-}
-
-Promise.prototype.resolve = function(value){
-  if (this.status !== 'pending') return
-  
-  this.status = 'fulfilled'
-  this.value = value
-  
-  setImmediate(function() {
-    this._handle()
-  }.bind(this))
-  
-  return this
-};
-
-
-Promise.prototype.reject = function(reason){
-  if (this.status !== 'pending') return
-  
-  this.status = 'rejected'
-  this.reason = reason
-  
-  setImmediate(function() {
-    this._handle()
-  }.bind(this))
-  
-  return this
-};
-
-Promise.prototype.then = function(onResolved, onRejected) {
-  var handle = this._handle.bind(this)
-
-  onResolved = typeof onResolved === 'function' ? onResolved : null
-  onRejected = typeof onRejected === 'function' ? onRejected : null
-
-  var thenable = {
-    resolve: onResolved,
-    reject: onRejected
-  }
-
-  if (this.status !== 'pending') {
-    setImmediate(function() {
-      handle()
-    })
+function resolve(promise, x) {
+  if (promise === x) {
+    return promise.reject(new TypeError())
   }
   
-  thenable.promise = new Promise()
-
-  this._queue.push(thenable)
-
-  return thenable.promise
-}
-
-Promise.prototype._handle = function() {
-  if (this._queue.length <= 0) return
-  var thenable,
-      i
-      
-  for (i = 0; i < this._queue.length;) {
-    thenable = this._queue[i]
-    
-    var promise = thenable.promise
-    var onResolve = thenable.resolve
-    var onReject = thenable.reject
-    var ret
-    
+  // make sure that a promise resolves only once
+  var called = false
+  
+  // x maybe `null`
+  if (x && (typeof x === 'function' || typeof x === 'object')) {
     try {
-      if (this.status === 'fulfilled') {
-        if (onResolve) ret = onResolve(this.value)
-        else 					 ret = promise.resolve(this.value)
-      } else if (this.status === 'rejected') {
-        if (onReject) ret = onReject(this.reason)
-        else 					ret = promise.reject(this.reason)
-      }
+      // avoid calling getter multiple times
+      var then = x.then
       
-      if (ret instanceof Promise) {
-        if (ret === promise) {
-          promise.reject(new TypeError()) 
-        } else {
-          ret.then(promise.resolve.bind(promise), promise.reject.bind(promise)) 
-        }
-      } else if (typeof ret === 'object' || typeof ret === 'function') {
-        try {
-          var then = ret.then
+      if (typeof then === 'function') {
+        then.call(x, function(y) {
+          if (called) return 
+          else        called = true
           
-          if (then)
-            then.call(ret, promise.resolve.bind(promise), promise.reject.bind(promise))
-          else 
-            promise.resolve(ret)       
-        } catch(e) {
-          promise.reject(e)
-        }
+          resolve(promise, y)
+        }, function(r) {
+          if (called) return 
+          else        called = true
+          
+          promise.reject(r)
+        })
       } else {
-        promise.resolve(ret)
+        promise.fulfill(x)
       }
     } catch(e) {
+      if (called) return 
+      else        called = true
+      
       promise.reject(e)
     }
-
-    this._queue.shift()
+  } else {
+    promise.fulfill(x)
   }
-
-  this._queue = []
 }
 
-module.exports = Promise
+function handle(onFulfilled, onRejected) {
+  // unresolved promise 
+  if (this._status === 'pending') {
+    this._thens.push({
+      onFulfilled: onFulfilled,
+      onRejected: onRejected
+    })
+  } else {
+    // already resolved promise
+    setTimeout(function() {
+      if (this._status === 'fulfill' && typeof onFulfilled === 'function') {
+        onFulfilled(this._value)
+      } else if (this._status === 'reject' && typeof onRejected === 'function') {
+        onRejected(this._value)
+      }
+    }.bind(this))
+  }
+}
+
+function Promise() {
+  this._status = 'pending'
+  
+  this._thens = []
+  
+  this._handle = handle.bind(this)
+}
+
+Promise.prototype.fulfill = function(value) {
+  if (this._status === 'pending') {
+    this._status = 'fulfill'
+    this._value = value
+    
+    setTimeout(function() {
+      this._thens.forEach(function(then) {
+        if (typeof then.onFulfilled === 'function') then.onFulfilled(value)
+      })
+      
+      this._thens = []
+    }.bind(this))
+  }
+  return this;
+}
+
+Promise.prototype.reject = function(value) {
+  if (this._status === 'pending') {
+    this._status = 'reject'
+    this._value = value
+    
+    setTimeout(function() {
+      this._thens.forEach(function(then) {
+        if (typeof then.onRejected === 'function') then.onRejected(value)
+      })
+      
+      this._thens = []
+    }.bind(this))
+  }
+  return this;
+}
+
+Promise.prototype.then = function(onFulfilled, onRejected) {
+  var promise = new Promise()
+
+  this._handle(function(x) {
+    if (typeof onFulfilled === 'function') {
+      try {
+        resolve(promise, onFulfilled(x))
+      } catch(e) {
+        promise.reject(e)
+      }
+    } else {
+      promise.fulfill(x)
+    }
+  }, function(x) {
+    if (typeof onRejected === 'function') {
+      try {
+        resolve(promise, onRejected(x))
+      } catch(e) {
+        promise.reject(e)
+      }
+    } else {
+      promise.reject(x)
+    }
+  })
+  
+  return promise
+}
+
+
+module.exports = Promise;

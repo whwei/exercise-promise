@@ -1,15 +1,16 @@
-var Promise = require('../index')
+var Promise = require('../adapter')
 
-var deferred = Promise.defer
+var deferred = Promise.deferred
 
-var resolved = deferred().resolve
-var rejected = deferred().reject
+var resolved = Promise.resolved
+var rejected = Promise.rejected
 
 var dummy = { dummy: "dummy" }
 
+
 function testPromiseResolution(xFactory, test) {
   var promise = resolved(dummy).then(function onBasePromiseFulfilled() {
-      console.log('call factory')
+    
       return xFactory();
   });
 
@@ -22,24 +23,42 @@ function testPromiseResolution(xFactory, test) {
   // test(promise);
 }
 
-var numberOfTimesThenWasRetrieved = 0;
+var md = {tset:'test'}
 
 function xFactory() {
-  console.log('factory called')
-    return Object.create(null, {
-        then: {
-            get: function () {
-                ++numberOfTimesThenWasRetrieved;
-                return function thenMethodForX(onFulfilled) {
-                    onFulfilled();
-                };
-            }
+    return {
+        then: function (onFulfilled) {
+            onFulfilled(yFactory(md));
         }
-    });
+    }
 }
 
-testPromiseResolution(xFactory, function (promise, done) {
-    promise.then(function () {
-        console.log(numberOfTimesThenWasRetrieved, 1);
-    });
-});
+function yFactory(value) {
+    return {
+        then: function (onFulfilled) {
+            onFulfilled(value);
+        }
+    }
+}
+
+// testPromiseResolution(xFactory, function (promise, done) {
+//     promise.then(function (value) {
+//         console.log(value, md);
+//     });
+// });
+
+resolved(null).then(function() {
+    return {
+        then: function (onFulfilled) {
+            onFulfilled(function() {
+                return {
+                    then: function (onFulfilled) {
+                        onFulfilled(md)
+                    }
+                }
+            });
+        }
+    }
+}).then(function(value) {
+    console.log('result', value, md)
+})
